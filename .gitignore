@@ -1,0 +1,19 @@
+
+# 2. Binary / Compiled Output (ไฟล์ผลลัพธ์จากการ build)
+manga_app.exe
+*.exe
+*.exe.manifest
+*.dll
+*.so
+*.dylib
+bin/
+dist/
+
+# 3. IDE & Editor Configs (การตั้งค่าส่วนตัวของเครื่อง Developer)
+.idea/
+*.iml
+
+# 4. OS / System Generated Files
+.DS_Store
+Thumbs.db
+
