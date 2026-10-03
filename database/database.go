@@ -11,6 +11,7 @@ import (
 )
 
 var DB *gorm.DB
+var gormOpen = gorm.Open
 
 func ConnectDatabase(cfg *config.Config) (*gorm.DB, error) {
 	// 1. ประกอบ DSN จาก Config struct
@@ -20,7 +21,7 @@ func ConnectDatabase(cfg *config.Config) (*gorm.DB, error) {
 	)
 
 	// 2. Open Connection
-	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	db, err := gormOpen(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}

@@ -9,9 +9,13 @@ import (
 )
 
 func InitLogger() *slog.Logger {
+
+	//เปลี่ยน Format เป็น JSON
+	//กำหนด level ขึ้นต่ำเป็น level info
 	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	})
+
 	logger := slog.New(handler)
 	slog.SetDefault(logger)
 	return logger

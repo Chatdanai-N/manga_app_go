@@ -14,13 +14,10 @@ import (
 	"time"
 )
 
-func InitLogger() {
-
-}
-
 func main() {
 
 	middleware.InitLogger()
+
 
 	cfg, err := config.LoadConfig()
 	if err != nil {
