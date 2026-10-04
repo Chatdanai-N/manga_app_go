@@ -82,10 +82,10 @@ func TestMangaSystemParameterHandler_GetMangaSystemParameters_Success(t *testing
 
 			// ตั้งค่า Gin Router
 			r := gin.New()
-			r.GET("/system-parameters", handler.GetMangaSystemParameters)
+			r.GET("/system-parameter", handler.GetMangaSystemParameters)
 
 			// 2. Act: จำลอง HTTP Request
-			req, _ := http.NewRequest("GET", "/system-parameters", nil)
+			req, _ := http.NewRequest("GET", "/system-parameter", nil)
 			w := httptest.NewRecorder()
 
 			r.ServeHTTP(w, req)
@@ -302,12 +302,85 @@ func TestMangaSystemParameterHandler_CreateMangaSystemParameter(t *testing.T) {
 
 			// 2. Act:
 			req, _ := http.NewRequest("POST", "/system-parameters", bytes.NewBuffer(jsonBytes))
-			req.Header.Add("Content-Type", "application/json")
+			req.Header.Set("Content-Type", "application/json")
 			w := httptest.NewRecorder()
 
 			r.ServeHTTP(w, req)
 
 			// 3. Assert
+			if w.Code != ts.expectedStatus {
+				t.Errorf("expected status %d, got %d", ts.expectedStatus, w.Code)
+			}
+
+			if w.Body.String() != ts.expectedBody {
+				t.Errorf("expected body %s, got %s", ts.expectedBody, w.Body.String())
+			}
+
+			// ตรวจสอบว่า Mock SQL Query ถูกเรียกครบถ้วนตาม Expectation หรือไม่
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Errorf("there were unfulfilled expectations: %s", err)
+			}
+		})
+	}
+}
+
+func TestMangaSystemParameterHandler_PutMangaSystemParameter(t *testing.T) {
+	testSuits := []testSuit{
+		{
+			name: "Invalid Body Request - 400 Bad Request",
+			reqBody: RequestMangaParameter{
+				Code:        "MAXLIMIT",
+				Value:       "100",
+				OrderNumber: 1,
+			},
+			mockBehavior: func(mock sqlmock.Sqlmock) {
+
+			},
+			expectedStatus: http.StatusBadRequest,
+			expectedBody:   `{"error":"Key: 'RequestMangaParameter.GroupCode' Error:Field validation for 'GroupCode' failed on the 'required' tag"}`,
+		},
+	}
+
+	for _, ts := range testSuits {
+		t.Run(ts.name, func(t *testing.T) {
+			// 1.Arrange:
+			mockDB, mock, err := sqlmock.New()
+			if err != nil {
+				t.Fatalf("failed to open sqlmock: %v", err)
+			}
+			defer mockDB.Close()
+
+			gormDB, err := gorm.Open(postgres.New(postgres.Config{
+				Conn: mockDB,
+			}), &gorm.Config{})
+			if err != nil {
+				t.Fatalf("failed to open gorm db: %v", err)
+			}
+
+			// เรียกใช้ mockBehavior ของแต่ละ case
+			ts.mockBehavior(mock)
+
+			// สร้าง Handler พร้อมฉีด gormDB เข้าไป
+			handler := &MangaSystemParameterHandler{DB: gormDB}
+			// ตั้งค่า Gin Router
+			r := gin.New()
+			r.PUT("/system-parameter", handler.PutMangaSystemParameter)
+
+			// แปลง reqBody ให้เป็น []byte
+			var jsonBytes []byte
+			if str, ok := ts.reqBody.(string); ok {
+				jsonBytes = []byte(str)
+			} else {
+				jsonBytes, _ = json.Marshal(ts.reqBody)
+			}
+			// 2.Ack
+			req, _ := http.NewRequest("PUT", "/system-parameter", bytes.NewBuffer(jsonBytes))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			r.ServeHTTP(w, req)
+
+			// 3.Assert
 			if w.Code != ts.expectedStatus {
 				t.Errorf("expected status %d, got %d", ts.expectedStatus, w.Code)
 			}
