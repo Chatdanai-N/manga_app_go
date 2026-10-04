@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -19,6 +21,7 @@ type testSuit struct {
 	expectedStatus int
 	expectedBody   string
 	parameterId    string
+	reqBody        interface{}
 }
 
 func init() {
@@ -183,12 +186,128 @@ func TestMangaSystemParameterHandler_GetMangaSystemParameterById(t *testing.T) {
 			r := gin.New()
 			r.GET("/system-parameters/:id", handler.GetMangaSystemParameterById)
 
-			// 2. Act: จำลอง HTTP Request
+			// 2. Act:
 			req, _ := http.NewRequest("GET", "/system-parameters/"+ts.parameterId, nil)
 			w := httptest.NewRecorder()
 
 			r.ServeHTTP(w, req)
 
+			// 3. Assert
+			if w.Code != ts.expectedStatus {
+				t.Errorf("expected status %d, got %d", ts.expectedStatus, w.Code)
+			}
+
+			if w.Body.String() != ts.expectedBody {
+				t.Errorf("expected body %s, got %s", ts.expectedBody, w.Body.String())
+			}
+
+			// ตรวจสอบว่า Mock SQL Query ถูกเรียกครบถ้วนตาม Expectation หรือไม่
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Errorf("there were unfulfilled expectations: %s", err)
+			}
+		})
+	}
+}
+
+func TestMangaSystemParameterHandler_CreateMangaSystemParameter(t *testing.T) {
+
+	testSuits := []testSuit{
+		{
+			name: "Success - 201 Created",
+			reqBody: RequestMangaParameter{
+				GroupCode:   "SYSTEM",
+				Code:        "MAXLIMIT",
+				Value:       "100",
+				OrderNumber: 1,
+			},
+			mockBehavior: func(mock sqlmock.Sqlmock) {
+				mock.ExpectBegin()
+				expectedSQL := `INSERT INTO "manga_system_parameter"`
+
+				mock.ExpectQuery(regexp.QuoteMeta(expectedSQL)).
+					WithArgs("SYSTEM", "MAXLIMIT", "100", 1).
+					WillReturnRows(sqlmock.NewRows([]string{"parameter_id"}).AddRow(1))
+				mock.ExpectCommit()
+			},
+			expectedStatus: http.StatusCreated,
+			expectedBody:   `{"parameterId":1,"groupCode":"SYSTEM","code":"MAXLIMIT","value":"100","orderNumber":1}`,
+		},
+		{
+			name: "Invalid Body Request - 400 Bad Request",
+			reqBody: RequestMangaParameter{
+				Code:        "MAXLIMIT",
+				Value:       "100",
+				OrderNumber: 1,
+			},
+			mockBehavior: func(mock sqlmock.Sqlmock) {
+			},
+			expectedStatus: http.StatusBadRequest,
+			expectedBody:   `{"error":"Key: 'RequestMangaParameter.GroupCode' Error:Field validation for 'GroupCode' failed on the 'required' tag"}`,
+		},
+		{
+			name: "Failed to create record - 500 Internal Server Error",
+			reqBody: RequestMangaParameter{
+				GroupCode:   "SYSTEM",
+				Code:        "MAXLIMIT",
+				Value:       "100",
+				OrderNumber: 1,
+			},
+			mockBehavior: func(mock sqlmock.Sqlmock) {
+				mock.ExpectBegin()
+				expectedSQL := `INSERT INTO "manga_system_parameter"`
+
+				mock.ExpectQuery(regexp.QuoteMeta(expectedSQL)).
+					WithArgs("SYSTEM", "MAXLIMIT", "100", 1).
+					WillReturnError(errors.New("Failed to create record"))
+
+				//เมื่อเกิด Error ตัว GORM จะสั่ง Rollback (ห้ามใช้ ExpectCommit)
+				mock.ExpectRollback()
+			},
+			expectedStatus: http.StatusInternalServerError,
+			expectedBody:   `{"error":"Failed to create record"}`,
+		},
+	}
+	for _, ts := range testSuits {
+		t.Run(ts.name, func(t *testing.T) {
+			// 1. Arrange: สร้าง mock sql.DB และ GORM instance
+			mockDB, mock, err := sqlmock.New()
+			if err != nil {
+				t.Fatalf("failed to open sqlmock: %v", err)
+			}
+			defer mockDB.Close()
+
+			gormDB, err := gorm.Open(postgres.New(postgres.Config{
+				Conn: mockDB,
+			}), &gorm.Config{})
+			if err != nil {
+				t.Fatalf("failed to open gorm db: %v", err)
+			}
+
+			// เรียกใช้ mockBehavior ของแต่ละ case
+			ts.mockBehavior(mock)
+
+			// สร้าง Handler พร้อมฉีด gormDB เข้าไป
+			handler := &MangaSystemParameterHandler{DB: gormDB}
+			// ตั้งค่า Gin Router
+			r := gin.New()
+			r.POST("/system-parameters", handler.CreateMangaSystemParameter)
+
+			// แปลง reqBody ให้เป็น []byte
+			var jsonBytes []byte
+			if str, ok := ts.reqBody.(string); ok {
+				jsonBytes = []byte(str)
+			} else {
+				jsonBytes, _ = json.Marshal(ts.reqBody)
+			}
+
+			// 2. Act:
+			req, _ := http.NewRequest("POST", "/system-parameters", bytes.NewBuffer(jsonBytes))
+			req.Header.Add("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			r.ServeHTTP(w, req)
+
+			// 3. Assert
 			if w.Code != ts.expectedStatus {
 				t.Errorf("expected status %d, got %d", ts.expectedStatus, w.Code)
 			}
