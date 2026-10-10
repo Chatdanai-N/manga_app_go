@@ -29,6 +29,29 @@ func init() {
 	gin.SetMode(gin.TestMode)
 }
 
+func TestNewMangaSystemParameterHandler(t *testing.T) {
+
+	// arrange
+	sqlDB, _, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+	}
+	defer sqlDB.Close()
+
+	gormDB, err := gorm.Open(postgres.New(postgres.Config{
+		Conn: sqlDB,
+	}), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+	}
+
+	handler := NewMangaSystemParameterHandler(gormDB)
+	if handler == nil {
+		t.Errorf("NewMangaSystemParameterHandler returned nil")
+	}
+
+}
+
 func TestMangaSystemParameterHandler_GetMangaSystemParameters_Success(t *testing.T) {
 	testSuits := []testSuit{
 		{
@@ -478,6 +501,286 @@ func TestMangaSystemParameterHandler_PutMangaSystemParameter(t *testing.T) {
 			}
 			// 2.Ack
 			req, _ := http.NewRequest("PUT", "/system-parameter", bytes.NewBuffer(jsonBytes))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			r.ServeHTTP(w, req)
+
+			// 3.Assert
+			if w.Code != ts.expectedStatus {
+				t.Errorf("expected status %d, got %d", ts.expectedStatus, w.Code)
+			}
+
+			if w.Body.String() != ts.expectedBody {
+				t.Errorf("expected body %s, got %s", ts.expectedBody, w.Body.String())
+			}
+
+			// ตรวจสอบว่า Mock SQL Query ถูกเรียกครบถ้วนตาม Expectation หรือไม่
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Errorf("there were unfulfilled expectations: %s", err)
+			}
+		})
+	}
+}
+
+func TestMangaSystemParameterHandler_PatchMangaSystemParameter(t *testing.T) {
+	testSuits := []testSuit{
+		{
+			name: "Invalid ID format - 400 Bad Request",
+			reqBody: RequestMangaParameter{
+				Value: "100",
+			},
+			mockBehavior: func(mock sqlmock.Sqlmock) {
+
+			},
+			expectedStatus: http.StatusBadRequest,
+			expectedBody:   `{"error":"Invalid ID format"}`,
+			parameterId:    "Hello",
+		},
+		{
+			name: "Invalid Body Request - 400 Bad Request",
+			reqBody: RequestMangaParameter{
+				ParameterId: 999,
+			},
+			mockBehavior: func(mock sqlmock.Sqlmock) {
+
+			},
+			expectedStatus: http.StatusBadRequest,
+			expectedBody:   `{"error":"Key: 'RequestPatchMangaSystemParameter.Value' Error:Field validation for 'Value' failed on the 'required' tag"}`,
+			parameterId:    "999",
+		},
+		{
+			name: "Record not Found - 404 Not Found",
+			reqBody: RequestMangaParameter{
+				Value: "100",
+			},
+			mockBehavior: func(mock sqlmock.Sqlmock) {
+				expectedSQL := `SELECT * FROM "manga_system_parameter" WHERE "manga_system_parameter"."parameter_id" = $1 ORDER BY "manga_system_parameter"."parameter_id" LIMIT $2`
+				mock.ExpectQuery(regexp.QuoteMeta(expectedSQL)).
+					WithArgs(999, 1).
+					WillReturnError(gorm.ErrRecordNotFound)
+			},
+			expectedStatus: http.StatusNotFound,
+			expectedBody:   `{"error":"Record not found"}`,
+			parameterId:    "999",
+		},
+		{
+			name: "Internal server error - 500 Internal server error",
+			reqBody: RequestMangaParameter{
+				Value: "100",
+			},
+			mockBehavior: func(mock sqlmock.Sqlmock) {
+				expectedSQL := `SELECT * FROM "manga_system_parameter" WHERE "manga_system_parameter"."parameter_id" = $1 ORDER BY "manga_system_parameter"."parameter_id" LIMIT $2`
+
+				mock.ExpectQuery(regexp.QuoteMeta(expectedSQL)).
+					WithArgs(999, 1).
+					WillReturnError(errors.New("error connection database"))
+			},
+			expectedStatus: http.StatusInternalServerError,
+			expectedBody:   `{"error":"Internal server error"}`,
+			parameterId:    "999",
+		},
+		{
+			name: "Failed to Update record - 500 Internal server error",
+			reqBody: RequestMangaParameter{
+				Value: "100",
+			},
+			mockBehavior: func(mock sqlmock.Sqlmock) {
+				// 1. mock select statement
+				rows := sqlmock.NewRows([]string{"parameter_id", "group_code", "code", "value", "order_number"}).
+					AddRow(999, "SYSTEM", "MAX_LIMIT", "100", 1)
+
+				expectedSQL := `SELECT * FROM "manga_system_parameter" WHERE "manga_system_parameter"."parameter_id" = $1 ORDER BY "manga_system_parameter"."parameter_id" LIMIT $2`
+				mock.ExpectQuery(regexp.QuoteMeta(expectedSQL)).
+					WithArgs(999, 1).
+					WillReturnRows(rows)
+
+				// 2. mock update statement
+				mock.ExpectBegin()
+
+				expectedUpdateSQL := `UPDATE "manga_system_parameter" SET "value"=$1 WHERE "parameter_id" = $2`
+				mock.ExpectExec(regexp.QuoteMeta(expectedUpdateSQL)).
+					WithArgs("100", uint64(999)).
+					WillReturnError(errors.New("error connection database"))
+
+				mock.ExpectRollback()
+			},
+			expectedStatus: http.StatusInternalServerError,
+			expectedBody:   `{"error":"Failed to update record"}`,
+			parameterId:    "999",
+		},
+		{
+			name: "Success to update record - 200 OK",
+			reqBody: RequestMangaParameter{
+				Value: "101",
+			},
+			mockBehavior: func(mock sqlmock.Sqlmock) {
+				// 1. mock select statement
+				rows := sqlmock.NewRows([]string{"parameter_id", "group_code", "code", "value", "order_number"}).
+					AddRow(999, "SYSTEM", "MAX_LIMIT", "100", 1)
+
+				expectedSQL := `SELECT * FROM "manga_system_parameter" WHERE "manga_system_parameter"."parameter_id" = $1 ORDER BY "manga_system_parameter"."parameter_id" LIMIT $2`
+				mock.ExpectQuery(regexp.QuoteMeta(expectedSQL)).
+					WithArgs(999, 1).
+					WillReturnRows(rows)
+				// 2. mock update statement
+				mock.ExpectBegin()
+
+				expectedUpdateSQL := `UPDATE "manga_system_parameter" SET "value"=$1 WHERE "parameter_id" = $2`
+				mock.ExpectExec(regexp.QuoteMeta(expectedUpdateSQL)).
+					WithArgs("101", uint64(999)).
+					WillReturnResult(sqlmock.NewResult(1, 1))
+
+				mock.ExpectCommit()
+			},
+			expectedStatus: http.StatusOK,
+			expectedBody:   `{"parameterId":999,"groupCode":"SYSTEM","code":"MAX_LIMIT","value":"101","orderNumber":1}`,
+			parameterId:    "999",
+		},
+	}
+
+	for _, ts := range testSuits {
+		t.Run(ts.name, func(t *testing.T) {
+			// 1.Arrage
+			mockDB, mock, err := sqlmock.New()
+			if err != nil {
+				t.Fatalf("failed to open sqlmock: %v", err)
+			}
+			defer mockDB.Close()
+
+			gormDB, err := gorm.Open(postgres.New(postgres.Config{
+				Conn: mockDB,
+			}), &gorm.Config{})
+			if err != nil {
+				t.Fatalf("failed to open gorm db: %v", err)
+			}
+
+			// เรียกใช้ mockBehavior ของแต่ละ case
+			ts.mockBehavior(mock)
+
+			// สร้าง Handler พร้อมฉีด gormDB เข้าไป
+			handler := &MangaSystemParameterHandler{DB: gormDB}
+
+			// ตั้งค่า Gin Router
+			r := gin.New()
+			r.PATCH("/system-parameter/:id", handler.PatchMangaSystemParameter)
+
+			var jsonBytes []byte
+			if str, ok := ts.reqBody.(string); ok {
+				jsonBytes = []byte(str)
+			} else {
+				jsonBytes, _ = json.Marshal(ts.reqBody)
+			}
+
+			// 2. Act:
+			req, _ := http.NewRequest("PATCH", "/system-parameter/"+ts.parameterId, bytes.NewBuffer(jsonBytes))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			r.ServeHTTP(w, req)
+
+			// 3.Assert
+			if w.Code != ts.expectedStatus {
+				t.Errorf("expected status %d, got %d", ts.expectedStatus, w.Code)
+			}
+
+			if w.Body.String() != ts.expectedBody {
+				t.Errorf("expected body %s, got %s", ts.expectedBody, w.Body.String())
+			}
+
+			// ตรวจสอบว่า Mock SQL Query ถูกเรียกครบถ้วนตาม Expectation หรือไม่
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Errorf("there were unfulfilled expectations: %s", err)
+			}
+		})
+	}
+
+}
+
+func TestMangaSystemParameterHandler_DeleteMangaSystemParameterById(t *testing.T) {
+	testSuits := []testSuit{
+		{
+			name: "Invalid ID format - 400 Bad Request",
+			mockBehavior: func(mock sqlmock.Sqlmock) {
+
+			},
+			expectedStatus: http.StatusBadRequest,
+			expectedBody:   `{"error":"Invalid ID format"}`,
+			parameterId:    "Hello",
+		},
+		{
+			name: "Invalid ID format - 500 Internal Server Error",
+			mockBehavior: func(mock sqlmock.Sqlmock) {
+				mock.ExpectBegin()
+
+				expectedSQL := `DELETE FROM "manga_system_parameter" WHERE "manga_system_parameter"."parameter_id" = $1`
+				mock.ExpectExec(regexp.QuoteMeta(expectedSQL)).
+					WithArgs(uint64(999)).
+					WillReturnError(gorm.ErrInvalidTransaction)
+
+				mock.ExpectRollback()
+			},
+			expectedStatus: http.StatusInternalServerError,
+			expectedBody:   `{"error":"Internal server error"}`,
+			parameterId:    "999",
+		},
+		{
+			name: "Record not found - 404 not found",
+			mockBehavior: func(mock sqlmock.Sqlmock) {
+				mock.ExpectBegin()
+				expectedSQL := `DELETE FROM "manga_system_parameter" WHERE "manga_system_parameter"."parameter_id" = $1`
+				mock.ExpectExec(regexp.QuoteMeta(expectedSQL)).
+					WithArgs(uint64(999)).
+					WillReturnResult(sqlmock.NewResult(0, 0))
+				mock.ExpectCommit()
+			},
+			expectedStatus: http.StatusNotFound,
+			expectedBody:   `{"error":"Record not found"}`,
+			parameterId:    "999",
+		},
+		{
+			name: "Delete Success - 200 Successfully deleted record",
+			mockBehavior: func(mock sqlmock.Sqlmock) {
+				mock.ExpectBegin()
+				expectedSQL := `DELETE FROM "manga_system_parameter" WHERE "manga_system_parameter"."parameter_id" = $1`
+				mock.ExpectExec(regexp.QuoteMeta(expectedSQL)).
+					WithArgs(uint64(999)).
+					WillReturnResult(sqlmock.NewResult(1, 1))
+				mock.ExpectCommit()
+			},
+			expectedStatus: http.StatusOK,
+			expectedBody:   `{"message":"Successfully deleted record"}`,
+			parameterId:    "999",
+		},
+	}
+
+	for _, ts := range testSuits {
+		t.Run(ts.name, func(t *testing.T) {
+			// 1.Arrage
+			mockDB, mock, err := sqlmock.New()
+			if err != nil {
+				t.Fatalf("failed to open sqlmock: %v", err)
+			}
+			defer mockDB.Close()
+
+			gormDB, err := gorm.Open(postgres.New(postgres.Config{
+				Conn: mockDB,
+			}), &gorm.Config{})
+			if err != nil {
+				t.Fatalf("failed to open gorm db: %v", err)
+			}
+
+			// เรียกใช้ mockBehavior ของแต่ละ case
+			ts.mockBehavior(mock)
+
+			// สร้าง Handler พร้อมฉีด gormDB เข้าไป
+			handler := &MangaSystemParameterHandler{DB: gormDB}
+
+			// ตั้งค่า Gin Router
+			r := gin.New()
+			r.DELETE("/system-parameter/:id", handler.DeleteMangaSystemParameterById)
+			// 2.Ack
+			req, _ := http.NewRequest("DELETE", "/system-parameter/"+ts.parameterId, nil)
 			req.Header.Set("Content-Type", "application/json")
 			w := httptest.NewRecorder()
 
