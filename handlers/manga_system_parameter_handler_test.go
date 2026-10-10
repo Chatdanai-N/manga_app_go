@@ -116,8 +116,8 @@ func TestMangaSystemParameterHandler_GetMangaSystemParameterById(t *testing.T) {
 			mockBehavior: func(mock sqlmock.Sqlmock) {
 				expectedSQL := `SELECT * FROM "manga_system_parameter" WHERE "manga_system_parameter"."parameter_id" = $1 ORDER BY "manga_system_parameter"."parameter_id" LIMIT $2`
 				mock.ExpectQuery(regexp.QuoteMeta(expectedSQL)).
-					WithArgs(999, 1). // $1 = 999, $2 = 1 (LIMIT 1 ของ GORM First)
-					WillReturnError(gorm.ErrRecordNotFound)
+					WithArgs(999, 1).
+					WillReturnError(gorm.ErrRecordNotFound) // $1 = 999, $2 = 1 (LIMIT 1 ของ GORM First)
 			},
 			expectedStatus: http.StatusNotFound,
 			expectedBody:   `{"error":"Record not found"}`,
@@ -338,6 +338,109 @@ func TestMangaSystemParameterHandler_PutMangaSystemParameter(t *testing.T) {
 			},
 			expectedStatus: http.StatusBadRequest,
 			expectedBody:   `{"error":"Key: 'RequestMangaParameter.GroupCode' Error:Field validation for 'GroupCode' failed on the 'required' tag"}`,
+		},
+		{
+			name: "Record Not Found - 404 Not Found",
+			reqBody: RequestMangaParameter{
+				ParameterId: 999,
+				GroupCode:   "SYSTEM",
+				Code:        "TEST",
+				Value:       "100",
+				OrderNumber: 999,
+			},
+			mockBehavior: func(mock sqlmock.Sqlmock) {
+				expectedSQL := `SELECT * FROM "manga_system_parameter" WHERE "manga_system_parameter"."parameter_id" = $1 ORDER BY "manga_system_parameter"."parameter_id" LIMIT $2`
+				mock.ExpectQuery(regexp.QuoteMeta(expectedSQL)).
+					WithArgs(999, 1).
+					WillReturnError(gorm.ErrRecordNotFound)
+			},
+			expectedStatus: http.StatusNotFound,
+			expectedBody:   `{"error":"Record not found"}`,
+		},
+		{
+			name: "Internal Server Error - 500 Internal Server Error",
+			reqBody: RequestMangaParameter{
+				ParameterId: 999,
+				GroupCode:   "SYSTEM",
+				Code:        "TEST",
+				Value:       "100",
+				OrderNumber: 999,
+			},
+			mockBehavior: func(mock sqlmock.Sqlmock) {
+				expectedSQL := `SELECT * FROM "manga_system_parameter" WHERE "manga_system_parameter"."parameter_id" = $1 ORDER BY "manga_system_parameter"."parameter_id" LIMIT $2`
+				mock.ExpectQuery(regexp.QuoteMeta(expectedSQL)).
+					WithArgs(999, 1).
+					WillReturnError(errors.New("Failed to connect database"))
+			},
+			expectedStatus: http.StatusInternalServerError,
+			expectedBody:   `{"error":"Internal server error"}`,
+		},
+		{
+			name: "Failed to create record - 500 Internal Server Error",
+			reqBody: RequestMangaParameter{
+				ParameterId: 999,
+				GroupCode:   "SYSTEM",
+				Code:        "MAX_LIMIT",
+				Value:       "100",
+				OrderNumber: 1,
+			},
+			mockBehavior: func(mock sqlmock.Sqlmock) {
+				// 1.mock select
+				expectedSQL := `SELECT * FROM "manga_system_parameter" WHERE "manga_system_parameter"."parameter_id" = $1 ORDER BY "manga_system_parameter"."parameter_id" LIMIT $2`
+
+				rows := sqlmock.NewRows([]string{"parameter_id", "group_code", "code", "value", "order_number"}).
+					AddRow(999, "SYSTEM", "MAX_LIMIT", "100", 1)
+
+				mock.ExpectQuery(regexp.QuoteMeta(expectedSQL)).
+					WithArgs(999, 1).
+					WillReturnRows(rows)
+
+				// 2.mock update
+				mock.ExpectBegin()
+
+				expectedUpdateSql := `UPDATE "manga_system_parameter" SET "group_code"=\$1,"code"=\$2,"value"=\$3,"order_number"=\$4 WHERE "parameter_id" = \$5`
+
+				mock.ExpectExec(expectedUpdateSql).
+					WithArgs("SYSTEM", "MAX_LIMIT", "100", 1, uint64(999)).
+					WillReturnError(errors.New("Failed to connect database"))
+
+				mock.ExpectRollback()
+			},
+			expectedStatus: http.StatusInternalServerError,
+			expectedBody:   `{"error":"Failed to update record"}`,
+		},
+		{
+			name: "Success to Update record - 200 OK",
+			reqBody: RequestMangaParameter{
+				ParameterId: 999,
+				GroupCode:   "SYSTEM",
+				Code:        "MAX_LIMIT",
+				Value:       "101",
+				OrderNumber: 1,
+			},
+			mockBehavior: func(mock sqlmock.Sqlmock) {
+				// 1.mock select
+				expectedSQL := `SELECT * FROM "manga_system_parameter" WHERE "manga_system_parameter"."parameter_id" = $1 ORDER BY "manga_system_parameter"."parameter_id" LIMIT $2`
+
+				rows := sqlmock.NewRows([]string{"parameter_id", "group_code", "code", "value", "order_number"}).
+					AddRow(999, "SYSTEM", "MAX_LIMIT", "100", 1)
+
+				mock.ExpectQuery(regexp.QuoteMeta(expectedSQL)).
+					WithArgs(999, 1).
+					WillReturnRows(rows)
+
+				// 2.mock update
+				mock.ExpectBegin()
+
+				expectedUpdateSql := `UPDATE "manga_system_parameter" SET "group_code"=\$1,"code"=\$2,"value"=\$3,"order_number"=\$4 WHERE "parameter_id" = \$5`
+				mock.ExpectExec(expectedUpdateSql).
+					WithArgs("SYSTEM", "MAX_LIMIT", "101", 1, uint64(999)).
+					WillReturnResult(sqlmock.NewResult(1, 1))
+
+				mock.ExpectCommit()
+			},
+			expectedStatus: http.StatusOK,
+			expectedBody:   `{"parameterId":999,"groupCode":"SYSTEM","code":"MAX_LIMIT","value":"101","orderNumber":1}`,
 		},
 	}
 
