@@ -1,8 +1,11 @@
 package router
 
 import (
+	"manga_app/config"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"regexp"
 	"testing"
 
@@ -14,6 +17,7 @@ import (
 
 func setupTestRouter(t *testing.T) (*gin.Engine, sqlmock.Sqlmock) {
 
+	// 1.Arrange
 	gin.SetMode(gin.TestMode)
 	sqlDB, mock, err := sqlmock.New()
 	if err != nil {
@@ -28,7 +32,40 @@ func setupTestRouter(t *testing.T) (*gin.Engine, sqlmock.Sqlmock) {
 		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
 	}
 
-	router := SetupRouter(gormDB)
+	// load config
+	envContent := `DB_HOST=localhost
+DB_PORT=5432
+DB_USER=root
+DB_PASSWORD=secret
+DB_NAME=testdb
+DB_SEARCH_PATH=public
+PORT=8080`
+	tmpDir := t.TempDir()
+	envPath := filepath.Join(tmpDir, ".env")
+	err = os.WriteFile(envPath, []byte(envContent), 0644)
+	if err != nil {
+
+		t.Fatalf("failed to create temp env file: %v", err)
+	}
+
+	// ย้าย Working Directory ชั่วคราวไปที่ Directory ที่มีไฟล์ .env
+	originalWd, _ := os.Getwd()
+	os.Chdir(tmpDir)
+	defer os.Chdir(originalWd)
+	// 2.Act
+	cfg, err := config.LoadConfig()
+
+	// 3.Assert
+	if err != nil {
+		t.Fatalf("expected no error , got %v", err)
+	}
+
+	if cfg == nil {
+		t.Fatal("expected cfg not to be nil")
+	}
+
+	// 2.Ack
+	router := SetupRouter(gormDB, cfg)
 
 	return router, mock
 }

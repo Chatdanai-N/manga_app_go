@@ -1,14 +1,23 @@
 package router
 
 import (
+	"manga_app/config"
 	"manga_app/handlers"
 	"manga_app/middleware"
+	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 	"gorm.io/gorm"
 )
 
-func SetupRouter(db *gorm.DB) *gin.Engine {
+type Claims struct {
+	Username string `json:"username"`
+	jwt.RegisteredClaims
+}
+
+func SetupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	// ใช้ gin.New() แทน gin.Default() เพื่อปิด Built-in Logger ของ Gin
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
@@ -18,6 +27,7 @@ func SetupRouter(db *gorm.DB) *gin.Engine {
 	r.Use(gin.Recovery())
 
 	// initialize Handler
+	mangaLoginHandler := handlers.NewLoginHandler(db, cfg)
 	mangaSystemParameterHandler := handlers.NewMangaSystemParameterHandler(db)
 
 	// Health Check Endpoint
@@ -27,6 +37,8 @@ func SetupRouter(db *gorm.DB) *gin.Engine {
 
 	apiV1 := r.Group("/api/v1")
 	{
+
+		apiV1.POST("/login", mangaLoginHandler.PostLogin)
 
 		// Parameter Group
 		params := apiV1.Group("/parameter")
@@ -38,7 +50,24 @@ func SetupRouter(db *gorm.DB) *gin.Engine {
 			params.PATCH("/:id", mangaSystemParameterHandler.PatchMangaSystemParameter)
 			params.DELETE("/:id", mangaSystemParameterHandler.DeleteMangaSystemParameterById)
 		}
-
 	}
 	return r
+}
+
+// ยังไม่เสร็จ
+func jwtAuthMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		authHeader := c.Request.Header.Get("Authorization")
+		if authHeader == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			c.Abort()
+			return
+		}
+
+		parts := strings.SplitN(authHeader, " ", 2)
+		if !(len(parts) == 2 && parts[0] == "Bearer") {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid format token"})
+		}
+
+	}
 }

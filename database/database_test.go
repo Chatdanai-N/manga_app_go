@@ -40,11 +40,11 @@ func TestConnectDatabase_InvalidConfig(t *testing.T) {
 	db, err := ConnectDatabase(&cfg)
 
 	// 3.Assert
-	if err != nil {
-		t.Errorf("expected error when open connect error = %v", err)
+	if err == nil {
+		t.Errorf("expected error connecting to invalid db : got %v", db)
 	}
 
-	if db == nil {
-		t.Errorf("expected db to be nil on error = %v", err)
+	if db != nil {
+		t.Errorf("expected db to be nil : got %v", db)
 	}
 }

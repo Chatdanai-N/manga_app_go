@@ -18,8 +18,7 @@ func main() {
 
 	middleware.InitLogger()
 
-
-	cfg, err := config.LoadConfig()
+	cfg, err := config.LoadConfig(".env")
 	if err != nil {
 		slog.Error("failed to load config ", "error", err)
 		os.Exit(1)
@@ -32,7 +31,7 @@ func main() {
 	}
 
 	// Setup Router & Start Server
-	r := router.SetupRouter(database.DB)
+	r := router.SetupRouter(database.DB, cfg)
 
 	// Setup Router & HTTP Server Structure
 	srv := &http.Server{

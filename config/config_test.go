@@ -83,11 +83,12 @@ func TestLoadConfig_FileNotFound(t *testing.T) {
 	cfg, err := LoadConfig()
 
 	// assert
-	if err != nil {
+	if err == nil {
 		t.Error("expected error when .env file  does not exist, got nil")
 	}
 
 	if cfg != nil {
 		t.Errorf("expected config to be nil on error, got %v", cfg)
 	}
+
 }

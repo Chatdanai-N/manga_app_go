@@ -15,6 +15,7 @@ type Config struct {
 	DBName       string
 	DbSearchPath string
 	Port         string
+	JWTSecret    string
 }
 
 func LoadConfig(filenames ...string) (*Config, error) {
@@ -29,6 +30,7 @@ func LoadConfig(filenames ...string) (*Config, error) {
 	dbName := os.Getenv("DB_NAME")
 	dbSearchPath := os.Getenv("DB_SEARCH_PATH")
 	port := os.Getenv("PORT")
+	jwtSecret := os.Getenv("JWT_SECRET")
 
 	return &Config{
 		DBHost:       dbHost,
@@ -38,5 +40,6 @@ func LoadConfig(filenames ...string) (*Config, error) {
 		DBName:       dbName,
 		DbSearchPath: dbSearchPath,
 		Port:         port,
+		JWTSecret:    jwtSecret,
 	}, err
 }
