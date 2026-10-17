@@ -6,8 +6,6 @@ import (
 	"manga_app/handlers"
 	"manga_app/middleware"
 	"manga_app/validatorutil"
-	"net/http"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
@@ -54,6 +52,7 @@ func SetupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 		apiV1.POST("/signup", mangaLoginHandler.PostSignup)
 		// Parameter Group
 		params := apiV1.Group("/parameter")
+		params.Use(middleware.AuthMiddleware(cfg.JWTSecret))
 		{
 			params.GET("", mangaSystemParameterHandler.GetMangaSystemParameters)
 			params.GET("/:id", mangaSystemParameterHandler.GetMangaSystemParameterById)
@@ -93,22 +92,4 @@ func SetUpCustomValidators(v *validator.Validate) error {
 	}
 
 	return nil
-}
-
-// ยังไม่เสร็จ
-func jwtAuthMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		authHeader := c.Request.Header.Get("Authorization")
-		if authHeader == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
-			c.Abort()
-			return
-		}
-
-		parts := strings.SplitN(authHeader, " ", 2)
-		if !(len(parts) == 2 && parts[0] == "Bearer") {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid format token"})
-		}
-
-	}
 }
