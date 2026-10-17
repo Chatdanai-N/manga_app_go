@@ -1,13 +1,17 @@
 package router
 
 import (
+	"log"
 	"manga_app/config"
 	"manga_app/handlers"
 	"manga_app/middleware"
+	"manga_app/validatorutil"
 	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
+	"github.com/go-playground/validator/v10"
 	"github.com/golang-jwt/jwt/v5"
 	"gorm.io/gorm"
 )
@@ -26,6 +30,14 @@ func SetupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	r.Use(middleware.StructuredLogger())
 	r.Use(gin.Recovery())
 
+	// registration custom validation
+	if v, ok := binding.Validator.Engine().(*validator.Validate); ok {
+
+		if err := SetUpCustomValidators(v); err != nil {
+			log.Fatalf("failed to set up custom validators %v", err)
+		}
+	}
+
 	// initialize Handler
 	mangaLoginHandler := handlers.NewLoginHandler(db, cfg)
 	mangaSystemParameterHandler := handlers.NewMangaSystemParameterHandler(db)
@@ -39,7 +51,7 @@ func SetupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	{
 
 		apiV1.POST("/login", mangaLoginHandler.PostLogin)
-
+		apiV1.POST("/signup", mangaLoginHandler.PostSignup)
 		// Parameter Group
 		params := apiV1.Group("/parameter")
 		{
@@ -52,6 +64,35 @@ func SetupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 		}
 	}
 	return r
+}
+
+func SetUpCustomValidators(v *validator.Validate) error {
+
+	if err := v.RegisterValidation("is_valid_email", validatorutil.IsValidEmail); err != nil {
+		return err
+	}
+
+	if err := v.RegisterValidation("len_password", validatorutil.LenPassword); err != nil {
+		return err
+	}
+
+	if err := v.RegisterValidation("has_upper", validatorutil.HasUpper); err != nil {
+		return err
+	}
+
+	if err := v.RegisterValidation("has_lower", validatorutil.HasLower); err != nil {
+		return err
+	}
+
+	if err := v.RegisterValidation("has_number", validatorutil.HasUpper); err != nil {
+		return err
+	}
+
+	if err := v.RegisterValidation("has_special", validatorutil.HasSpacial); err != nil {
+
+	}
+
+	return nil
 }
 
 // ยังไม่เสร็จ

@@ -24,6 +24,13 @@ type LoginRequest struct {
 	Password string `json:"password"`
 }
 
+type SignupRequest struct {
+	Username        string `json:"username" binding:"required"`
+	Password        string `json:"password" binding:"required,len_password,has_upper,has_lower,has_number,has_special"`
+	ConfirmPassword string `json:"confirmPassword" binding:"required,eqfield=Password"`
+	Email           string `json:"email" binding:"required,is_valid_email"`
+}
+
 type LoginHandler struct {
 	DB     *gorm.DB
 	Config *config.Config
@@ -82,4 +89,37 @@ func (h *LoginHandler) PostLogin(c *gin.Context) {
 
 	// response Token to client
 	c.JSON(http.StatusOK, gin.H{"token": tokenString})
+}
+
+func (h *LoginHandler) PostSignup(c *gin.Context) {
+	var request SignupRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		slog.WarnContext(c.Request.Context(), "invalid Body Request", slog.String("error", err.Error()))
+		c.JSON(http.StatusBadRequest, gin.H{"error register": err.Error()})
+		return
+	}
+
+	// Generate password hash
+	passwordByte, err := bcrypt.GenerateFromPassword([]byte(request.Password), bcrypt.DefaultCost)
+	if err != nil {
+		slog.WarnContext(c.Request.Context(), "error hash password", slog.String("error", err.Error()))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	param := models.MangaUsers{
+		Username:     request.Username,
+		PasswordHash: string(passwordByte),
+		Email:        request.Email,
+		CreatedDate:  time.Now(),
+	}
+
+	if err := h.DB.Create(&param).Error; err != nil {
+		slog.WarnContext(c.Request.Context(), "error create user", slog.String("error", err.Error()))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create user"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"user": param})
+
 }
