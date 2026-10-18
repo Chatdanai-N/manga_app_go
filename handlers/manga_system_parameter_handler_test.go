@@ -21,7 +21,7 @@ type testSuit struct {
 	expectedStatus int
 	expectedBody   string
 	parameterId    string
-	reqBody        interface{}
+	reqBody        any
 }
 
 func init() {

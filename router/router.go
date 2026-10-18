@@ -5,7 +5,7 @@ import (
 	"manga_app/config"
 	"manga_app/handlers"
 	"manga_app/middleware"
-	"manga_app/validatorutil"
+	"manga_app/validator_util"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
@@ -67,29 +67,12 @@ func SetupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 
 func SetUpCustomValidators(v *validator.Validate) error {
 
-	if err := v.RegisterValidation("is_valid_email", validatorutil.IsValidEmail); err != nil {
-		return err
-	}
-
-	if err := v.RegisterValidation("len_password", validatorutil.LenPassword); err != nil {
-		return err
-	}
-
-	if err := v.RegisterValidation("has_upper", validatorutil.HasUpper); err != nil {
-		return err
-	}
-
-	if err := v.RegisterValidation("has_lower", validatorutil.HasLower); err != nil {
-		return err
-	}
-
-	if err := v.RegisterValidation("has_number", validatorutil.HasUpper); err != nil {
-		return err
-	}
-
-	if err := v.RegisterValidation("has_special", validatorutil.HasSpacial); err != nil {
-
-	}
+	_ = v.RegisterValidation("is_valid_email", validator_util.IsValidEmail)
+	_ = v.RegisterValidation("len_password", validator_util.LenPassword)
+	_ = v.RegisterValidation("has_upper", validator_util.HasUpper)
+	_ = v.RegisterValidation("has_lower", validator_util.HasLower)
+	_ = v.RegisterValidation("has_number", validator_util.HasNumber)
+	_ = v.RegisterValidation("has_special", validator_util.HasSpacial)
 
 	return nil
 }

@@ -1,6 +1,8 @@
 package router
 
 import (
+	"bytes"
+	"encoding/json"
 	"manga_app/config"
 	"net/http"
 	"net/http/httptest"
@@ -8,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/gin-gonic/gin"
@@ -91,6 +94,9 @@ func TestSetupRouter_HealthCheck(t *testing.T) {
 func TestSetupRouter_GetParameterById_Route(t *testing.T) {
 	router, mock := setupTestRouter(t)
 
+	// get token by call login api
+	tokenString := getTokenWithLogin(t, router, mock)
+
 	expectedSQL := `SELECT * FROM "manga_system_parameter" WHERE "manga_system_parameter"."parameter_id" = $1 ORDER BY "manga_system_parameter"."parameter_id" LIMIT $2`
 	rows := sqlmock.NewRows([]string{"parameter_id", "group_code", "code", "value", "order_number"}).
 		AddRow(1, "SYSTEM", "MAX_LIMIT", "100", 1)
@@ -99,10 +105,10 @@ func TestSetupRouter_GetParameterById_Route(t *testing.T) {
 		WithArgs(uint64(1), 1).
 		WillReturnRows(rows)
 
-	// จำลองยิง HTTP Request ไปที่ Route จริง
 	w := httptest.NewRecorder()
+	// จำลองยิง HTTP Request ไปที่ Route จริง
 	req, _ := http.NewRequest(http.MethodGet, "/api/v1/parameter/1", nil)
-
+	req.Header.Set("Authorization", "Bearer "+tokenString)
 	router.ServeHTTP(w, req)
 
 	// ตรวจสอบผลลัพธ์
@@ -115,4 +121,45 @@ func TestSetupRouter_GetParameterById_Route(t *testing.T) {
 		t.Errorf("GetParameterById returned unexpected body: got %v want %v", w.Body.String(), expectedBody)
 	}
 
+}
+
+func getTokenWithLogin(t *testing.T, router *gin.Engine, mock sqlmock.Sqlmock) string {
+
+	expectedSQL := `SELECT * FROM "manga_users" WHERE username = $1 ORDER BY "manga_users"."id" LIMIT $2`
+	rows := sqlmock.NewRows([]string{"id", "username", "email", "password_hash", "created_date", "updated_date"}).
+		AddRow(1, "admin", "admin@example.com", "$2a$10$wUDCXKxa7elu9D7Hgt1Uc.yKZC0J/NLhZFnNYp1PzTJYXJqKYMeo2", time.Now(), time.Now())
+
+	mock.ExpectQuery(regexp.QuoteMeta(expectedSQL)).
+		WithArgs("admin", 1).
+		WillReturnRows(rows)
+
+	w := httptest.NewRecorder()
+
+	requestBody := map[string]string{
+		"username": "admin",
+		"password": "P@ssw0rd123",
+	}
+
+	var jsonBody, _ = json.Marshal(requestBody)
+
+	reqLogin, _ := http.NewRequest(http.MethodPost, "/api/v1/login", bytes.NewBuffer(jsonBody))
+	reqLogin.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, reqLogin)
+
+	var tokenString string
+	var response struct {
+		Token string `json:"token"`
+	}
+
+	if w.Code == http.StatusOK {
+		err := json.Unmarshal(w.Body.Bytes(), &response)
+		if err != nil {
+			t.Fatalf("failed to unmarshal response body: %v", err)
+		}
+
+		tokenString = response.Token
+
+	}
+
+	return tokenString
 }

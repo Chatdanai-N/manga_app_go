@@ -1,4 +1,4 @@
-package validatorutil
+package validator_util
 
 import (
 	"regexp"
@@ -8,7 +8,7 @@ import (
 )
 
 var IsValidEmail validator.Func = func(fl validator.FieldLevel) bool {
-	emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
+	emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
 	email := fl.Field().String()
 	return emailRegex.MatchString(email)
 }
