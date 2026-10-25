@@ -76,7 +76,7 @@ func TestStructuredLogger(t *testing.T) {
 
 	//data driven test
 	tests := []expectedResultTest{
-		expectedResultTest{
+		{
 			name:   "Status 200 - Info Log",
 			method: "GET",
 			path:   "/success",
@@ -85,7 +85,7 @@ func TestStructuredLogger(t *testing.T) {
 			},
 			expectedStatus: http.StatusOK,
 		},
-		expectedResultTest{
+		{
 			name:   "Status 400 - Warn Log",
 			method: "GET",
 			path:   "/bad-request",
@@ -94,7 +94,7 @@ func TestStructuredLogger(t *testing.T) {
 			},
 			expectedStatus: http.StatusBadRequest,
 		},
-		expectedResultTest{
+		{
 			name:   "Status 500 - Error Log",
 			method: "POST",
 			path:   "/internal-error",
@@ -103,7 +103,7 @@ func TestStructuredLogger(t *testing.T) {
 			},
 			expectedStatus: http.StatusInternalServerError,
 		},
-		expectedResultTest{
+		{
 			name:   "With Private Error - Append Error Attr",
 			method: "GET",
 			path:   "/error-with-msg",
@@ -121,18 +121,16 @@ func TestStructuredLogger(t *testing.T) {
 			// 1.Arrange
 			gin.SetMode(gin.ReleaseMode)
 			router := gin.New()
+
 			router.Use(StructuredLogger())
 			// 2.Act
 			router.Handle(test.method, test.path, test.handler)
-			//จำลอง HTTP Request และ ResponseRecorder
+
 			req, _ := http.NewRequest(test.method, test.path, nil)
-			//กำหนด Header เช่น User-Agent เพื่อทดสอบว่า Middleware สามารถดึงค่าไปลง Log ได้
-			req.Header.Set("User-Agent", "Go-Test-Agent")
-			//สร้าง Response Recorder ทำหน้าที่เป็น "ตัวรับ Response จำลอง" แทน Browser หรือ Client
+
 			w := httptest.NewRecorder()
-			//สั่งให้ Gin Engine ประมวลผล Request นั้นทันที โดยไม่ต้องเปิด Port Server จริง แล้วเขียนผลลัพธ์ลงใน
 			router.ServeHTTP(w, req)
-			// 3. Assert ตรวจสอบ HTTP Status Code
+
 			if w.Code != test.expectedStatus {
 				t.Errorf("expected status %d, got %d", test.expectedStatus, w.Code)
 			}

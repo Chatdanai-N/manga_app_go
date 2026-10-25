@@ -18,9 +18,63 @@ import (
 	"gorm.io/gorm"
 )
 
-func setupTestRouter(t *testing.T) (*gin.Engine, sqlmock.Sqlmock) {
+func TestSetupRouter_HealthCheck(t *testing.T) {
 
-	// 1.Arrange
+	cfg, gormDB, _ := SetupMockEnvironment(t)
+	router := SetupRouter(gormDB, cfg)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/health", nil)
+
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("health check returned wrong status code: got %v want %v", w.Code, http.StatusOK)
+	}
+
+	expectedResults := `{"status":"UP"}`
+	if w.Body.String() != expectedResults {
+		t.Errorf("health check returned unexpected body: got %v want %v", w.Body.String(), expectedResults)
+	}
+}
+
+func TestSetupRouter_GetParameterById_Route(t *testing.T) {
+
+	cfg, gormDB, mock := SetupMockEnvironment(t)
+	router := SetupRouter(gormDB, cfg)
+
+	// get token by call login api
+	tokenString := getTokenWithLogin(t, router, mock)
+
+	expectedSQL := `SELECT * FROM "manga_system_parameter" WHERE "manga_system_parameter"."parameter_id" = $1 ORDER BY "manga_system_parameter"."parameter_id" LIMIT $2`
+	rows := sqlmock.NewRows([]string{"parameter_id", "group_code", "code", "value", "order_number"}).
+		AddRow(1, "SYSTEM", "MAX_LIMIT", "100", 1)
+
+	mock.ExpectQuery(regexp.QuoteMeta(expectedSQL)).
+		WithArgs(uint64(1), 1).
+		WillReturnRows(rows)
+
+	w := httptest.NewRecorder()
+	// จำลองยิง HTTP Request ไปที่ Route จริง
+	req, _ := http.NewRequest(http.MethodGet, "/api/v1/parameter/1", nil)
+	req.Header.Set("Authorization", "Bearer "+tokenString)
+	router.ServeHTTP(w, req)
+
+	// ตรวจสอบผลลัพธ์
+	if w.Code != http.StatusOK {
+		t.Errorf("GetParameterById returned wrong status code: got %v want %v", w.Code, http.StatusOK)
+	}
+
+	expectedBody := `{"parameterId":1,"groupCode":"SYSTEM","code":"MAX_LIMIT","value":"100","orderNumber":1}`
+	if w.Body.String() != expectedBody {
+		t.Errorf("GetParameterById returned unexpected body: got %v want %v", w.Body.String(), expectedBody)
+	}
+
+}
+
+func SetupMockEnvironment(t *testing.T) (*config.Config, *gorm.DB, sqlmock.Sqlmock) {
+
+	t.Helper()
 	gin.SetMode(gin.TestMode)
 	sqlDB, mock, err := sqlmock.New()
 	if err != nil {
@@ -55,10 +109,9 @@ PORT=8080`
 	originalWd, _ := os.Getwd()
 	os.Chdir(tmpDir)
 	defer os.Chdir(originalWd)
-	// 2.Act
+
 	cfg, err := config.LoadConfig()
 
-	// 3.Assert
 	if err != nil {
 		t.Fatalf("expected no error , got %v", err)
 	}
@@ -67,64 +120,12 @@ PORT=8080`
 		t.Fatal("expected cfg not to be nil")
 	}
 
-	// 2.Ack
-	router := SetupRouter(gormDB, cfg)
-
-	return router, mock
-}
-
-func TestSetupRouter_HealthCheck(t *testing.T) {
-	router, _ := setupTestRouter(t)
-
-	w := httptest.NewRecorder()
-	req, _ := http.NewRequest(http.MethodGet, "/health", nil)
-
-	router.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Errorf("health check returned wrong status code: got %v want %v", w.Code, http.StatusOK)
-	}
-
-	expectedResults := `{"status":"UP"}`
-	if w.Body.String() != expectedResults {
-		t.Errorf("health check returned unexpected body: got %v want %v", w.Body.String(), expectedResults)
-	}
-}
-
-func TestSetupRouter_GetParameterById_Route(t *testing.T) {
-	router, mock := setupTestRouter(t)
-
-	// get token by call login api
-	tokenString := getTokenWithLogin(t, router, mock)
-
-	expectedSQL := `SELECT * FROM "manga_system_parameter" WHERE "manga_system_parameter"."parameter_id" = $1 ORDER BY "manga_system_parameter"."parameter_id" LIMIT $2`
-	rows := sqlmock.NewRows([]string{"parameter_id", "group_code", "code", "value", "order_number"}).
-		AddRow(1, "SYSTEM", "MAX_LIMIT", "100", 1)
-
-	mock.ExpectQuery(regexp.QuoteMeta(expectedSQL)).
-		WithArgs(uint64(1), 1).
-		WillReturnRows(rows)
-
-	w := httptest.NewRecorder()
-	// จำลองยิง HTTP Request ไปที่ Route จริง
-	req, _ := http.NewRequest(http.MethodGet, "/api/v1/parameter/1", nil)
-	req.Header.Set("Authorization", "Bearer "+tokenString)
-	router.ServeHTTP(w, req)
-
-	// ตรวจสอบผลลัพธ์
-	if w.Code != http.StatusOK {
-		t.Errorf("GetParameterById returned wrong status code: got %v want %v", w.Code, http.StatusOK)
-	}
-
-	expectedBody := `{"parameterId":1,"groupCode":"SYSTEM","code":"MAX_LIMIT","value":"100","orderNumber":1}`
-	if w.Body.String() != expectedBody {
-		t.Errorf("GetParameterById returned unexpected body: got %v want %v", w.Body.String(), expectedBody)
-	}
-
+	return cfg, gormDB, mock
 }
 
 func getTokenWithLogin(t *testing.T, router *gin.Engine, mock sqlmock.Sqlmock) string {
 
+	t.Helper()
 	expectedSQL := `SELECT * FROM "manga_users" WHERE username = $1 ORDER BY "manga_users"."id" LIMIT $2`
 	rows := sqlmock.NewRows([]string{"id", "username", "email", "password_hash", "created_date", "updated_date"}).
 		AddRow(1, "admin", "admin@example.com", "$2a$10$wUDCXKxa7elu9D7Hgt1Uc.yKZC0J/NLhZFnNYp1PzTJYXJqKYMeo2", time.Now(), time.Now())
